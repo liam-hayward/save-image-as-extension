@@ -32,6 +32,9 @@ function baseName(url) {
   return name || "image";
 }
 
+// Fetch image bytes in the service worker (has full cross-origin access)
+// and return as a base64 data URL. Chunked btoa avoids call-stack overflow
+// on large images that a naive char-by-char loop would hit.
 async function fetchImageAsDataUrl(srcUrl) {
   const response = await fetch(srcUrl);
   if (!response.ok) throw new Error(`HTTP ${response.status} fetching image`);
@@ -39,8 +42,19 @@ async function fetchImageAsDataUrl(srcUrl) {
   const arrayBuffer = await blob.arrayBuffer();
   const bytes = new Uint8Array(arrayBuffer);
   let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
   return `data:${blob.type};base64,${btoa(binary)}`;
+}
+
+async function sendToast(tabId, message, variant = "success") {
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: "SIAT_TOAST", message, variant });
+  } catch (_) {
+    // Tab may not have the content script (e.g. chrome:// pages) — fail silently
+  }
 }
 
 // ─── Context Menu Click Handler ────────────────────────────────────────────
@@ -72,6 +86,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         fetchedDataUrl = await fetchImageAsDataUrl(srcUrl);
       } catch (fetchErr) {
         console.error("Save Image As Type: fetch failed:", fetchErr);
+        await sendToast(tab.id, "Failed to fetch image.", "error");
         return;
       }
 
@@ -85,17 +100,22 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
     if (result?.error) {
       console.error("Save Image As Type:", result.error);
+      await sendToast(tab.id, "Could not convert image.", "error");
       return;
     }
+
     if (result?.dataUrl) {
       await chrome.downloads.download({
         url:      result.dataUrl,
         filename: result.filename,
         saveAs:   false,
       });
+      await sendToast(tab.id, `Saved as ${format.ext.toUpperCase()}: ${result.filename}`);
     }
+
   } catch (err) {
     console.error("Save Image As Type:", err);
+    await sendToast(tab.id, "Something went wrong.", "error");
   }
 });
 
@@ -109,8 +129,8 @@ function convertImageInPage(srcUrl, mimeType, ext, quality) {
 
     img.onload = () => {
       try {
-        let w = img.naturalWidth  || img.width  || 512;
-        let h = img.naturalHeight || img.height || 512;
+        const w = img.naturalWidth  || img.width  || 512;
+        const h = img.naturalHeight || img.height || 512;
 
         const canvas = document.createElement("canvas");
         canvas.width  = w;
