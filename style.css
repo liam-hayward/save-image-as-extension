@@ -1,0 +1,86 @@
+/* =========================================================
+   Save Image As Type – injected toast styles
+   ========================================================= */
+
+#__siat_toast__ {
+  /* Reset */
+  all: initial;
+}
+
+.siat-toast {
+  /* Layout */
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 2147483647;        /* Top of every stacking context */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px 12px 14px;
+  min-width: 220px;
+  max-width: 340px;
+
+  /* Appearance */
+  background: #18181b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.4),
+    0 2px 4px -2px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+
+  /* Typography */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #e4e4e7;
+  letter-spacing: 0.01em;
+
+  /* Animation — start hidden & shifted */
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition:
+    opacity 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+
+.siat-toast--visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* ── Icon pill ── */
+.siat-toast__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  font-style: normal;
+}
+
+.siat-toast--success .siat-toast__icon {
+  background: rgba(34, 197, 94, 0.18);
+  color: #4ade80;
+}
+
+.siat-toast--error .siat-toast__icon {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+}
+
+/* ── Message ── */
+.siat-toast__msg {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #e4e4e7;
+  line-height: 1.4;
+}

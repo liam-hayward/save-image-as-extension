@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Save Image As Type",
+  "version": "1.3.0",
+  "description": "Right-click any image to save it as JPG, PNG, or WebP — works on pages and standalone image tabs.",
+  "permissions": [
+    "contextMenus",
+    "downloads",
+    "activeTab",
+    "scripting",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["style.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Save Image As Type"
+  }
+}
