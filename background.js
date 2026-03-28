@@ -6,15 +6,9 @@ const FORMATS = [
   { id: "webp", label: "WebP (.webp)", mimeType: "image/webp", ext: "webp", quality: 0.92 },
 ];
 
-const STANDALONE_EXTS = ["svg","png","jpg","jpeg","webp","gif","avif","bmp","ico"];
-const STANDALONE_PATTERNS = STANDALONE_EXTS.flatMap(e => [
-  `*://*/*/*.${e}`, `*://*/*/*.${e}?*`,
-]);
-
 // ─── Context Menu Setup ────────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(() => {
-  // Right-clicking an <img> element on a normal page
   chrome.contextMenus.create({
     id: "saveImageAsType",
     title: "Save image as type",
@@ -26,22 +20,6 @@ chrome.runtime.onInstalled.addListener(() => {
       parentId: "saveImageAsType",
       title: fmt.label,
       contexts: ["image"],
-    });
-  }
-
-  // Right-clicking anywhere on a standalone image/SVG tab
-  chrome.contextMenus.create({
-    id: "savePageImageAsType",
-    title: "Save image as type",
-    contexts: ["page"],
-    documentUrlPatterns: STANDALONE_PATTERNS,
-  });
-  for (const fmt of FORMATS) {
-    chrome.contextMenus.create({
-      id: `savePageAs_${fmt.id}`,
-      parentId: "savePageImageAsType",
-      title: fmt.label,
-      contexts: ["page"],
     });
   }
 });
@@ -65,65 +43,30 @@ async function fetchImageAsDataUrl(srcUrl) {
   return `data:${blob.type};base64,${btoa(binary)}`;
 }
 
-// ─── Offscreen document helpers ───────────────────────────────────────────
-// Service workers have no DOM/canvas. For standalone image tabs where we
-// can't inject into the page, we spin up a hidden offscreen document that
-// CAN use canvas, do the conversion there, and pass the result back.
-
-async function ensureOffscreenDocument() {
-  const existing = await chrome.offscreen.hasDocument();
-  if (!existing) {
-    await chrome.offscreen.createDocument({
-      url:    "offscreen.html",
-      reasons: ["BLOBS"],
-      justification: "Convert image to canvas data URL for download",
-    });
-  }
-}
-
-async function convertViaOffscreen(fetchedDataUrl, mimeType, ext, quality, base) {
-  await ensureOffscreenDocument();
-
-  return new Promise((resolve) => {
-    const handler = (message) => {
-      if (message.type === "SIAT_CONVERT_RESULT") {
-        chrome.runtime.onMessage.removeListener(handler);
-        resolve(message.result);
-      }
-    };
-    chrome.runtime.onMessage.addListener(handler);
-
-    chrome.runtime.sendMessage({
-      type:          "SIAT_CONVERT",
-      fetchedDataUrl,
-      mimeType,
-      ext,
-      quality,
-      base,
-    });
-  });
-}
-
 // ─── Context Menu Click Handler ────────────────────────────────────────────
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  const match = info.menuItemId.match(/^saveAs_(.+)$/);
+  if (!match) return;
+
+  const format = FORMATS.find(f => f.id === match[1]);
+  if (!format) return;
+
+  const srcUrl = info.srcUrl;
+  if (!srcUrl) return;
+
   try {
-    const imgMatch  = info.menuItemId.match(/^saveAs_(.+)$/);
-    const pageMatch = info.menuItemId.match(/^savePageAs_(.+)$/);
+    // Step 1: try converting inside the page (fast, works for same-origin images)
+    let results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: convertImageInPage,
+      args: [srcUrl, format.mimeType, format.ext, format.quality],
+    });
 
-    const formatId = imgMatch?.[1] ?? pageMatch?.[1];
-    if (!formatId) return;
+    let result = results?.[0]?.result;
 
-    const format = FORMATS.find(f => f.id === formatId);
-    if (!format) return;
-
-    const srcUrl = info.srcUrl || (pageMatch ? tab.url : null);
-    if (!srcUrl) return;
-
-    if (pageMatch) {
-      // ── Standalone image tab ─────────────────────────────────────────
-      // We cannot inject scripts into Chrome's built-in image viewer, so
-      // fetch the bytes here and convert via the offscreen document instead.
+    // Step 2: cross-origin fallback — fetch in the service worker, convert in page
+    if (result?.crossOriginFailed) {
       let fetchedDataUrl;
       try {
         fetchedDataUrl = await fetchImageAsDataUrl(srcUrl);
@@ -132,68 +75,32 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         return;
       }
 
-      const result = await convertViaOffscreen(
-        fetchedDataUrl, format.mimeType, format.ext, format.quality, baseName(srcUrl)
-      );
-
-      if (result?.error) {
-        console.error("Save Image As Type:", result.error);
-        return;
-      }
-      if (result?.dataUrl) {
-        await chrome.downloads.download({
-          url:      result.dataUrl,
-          filename: result.filename,
-          saveAs:   false,
-        });
-      }
-
-    } else {
-      // ── Normal page: inject into the tab ─────────────────────────────
-      let results = await chrome.scripting.executeScript({
+      results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        func: convertImageInPage,
-        args: [srcUrl, format.mimeType, format.ext, format.quality],
+        func: convertDataUrlInPage,
+        args: [fetchedDataUrl, format.mimeType, format.ext, format.quality, baseName(srcUrl)],
       });
-
-      let result = results?.[0]?.result;
-
-      if (result?.crossOriginFailed) {
-        let fetchedDataUrl;
-        try {
-          fetchedDataUrl = await fetchImageAsDataUrl(srcUrl);
-        } catch (fetchErr) {
-          console.error("Save Image As Type: background fetch failed:", fetchErr);
-          return;
-        }
-
-        results = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: convertDataUrlInPage,
-          args: [fetchedDataUrl, format.mimeType, format.ext, format.quality, baseName(srcUrl)],
-        });
-        result = results?.[0]?.result;
-      }
-
-      if (result?.error) {
-        console.error("Save Image As Type:", result.error);
-        return;
-      }
-      if (result?.dataUrl) {
-        await chrome.downloads.download({
-          url:      result.dataUrl,
-          filename: result.filename,
-          saveAs:   false,
-        });
-      }
+      result = results?.[0]?.result;
     }
 
+    if (result?.error) {
+      console.error("Save Image As Type:", result.error);
+      return;
+    }
+    if (result?.dataUrl) {
+      await chrome.downloads.download({
+        url:      result.dataUrl,
+        filename: result.filename,
+        saveAs:   false,
+      });
+    }
   } catch (err) {
-    console.error("Save Image As Type: unhandled error:", err);
+    console.error("Save Image As Type:", err);
   }
 });
 
 // ─── Injected Function 1: page-side conversion ────────────────────────────
+// Returns { crossOriginFailed: true } if the canvas is tainted.
 
 function convertImageInPage(srcUrl, mimeType, ext, quality) {
   return new Promise((resolve) => {
@@ -202,21 +109,8 @@ function convertImageInPage(srcUrl, mimeType, ext, quality) {
 
     img.onload = () => {
       try {
-        let w = img.naturalWidth  || img.width;
-        let h = img.naturalHeight || img.height;
-
-        if ((!w || !h) && /\.svg(\?|$)/i.test(srcUrl)) {
-          const domImg = [...document.querySelectorAll("img")].find(
-            el => el.src === srcUrl || el.currentSrc === srcUrl
-          );
-          if (domImg) {
-            w = domImg.naturalWidth  || domImg.offsetWidth  || w;
-            h = domImg.naturalHeight || domImg.offsetHeight || h;
-          }
-        }
-
-        w = w || 512;
-        h = h || 512;
+        let w = img.naturalWidth  || img.width  || 512;
+        let h = img.naturalHeight || img.height || 512;
 
         const canvas = document.createElement("canvas");
         canvas.width  = w;
@@ -231,7 +125,6 @@ function convertImageInPage(srcUrl, mimeType, ext, quality) {
 
         let base = srcUrl.split("/").pop().split("?")[0] || "image";
         base = base.replace(/\.[a-zA-Z0-9]+$/, "") || "image";
-
         resolve({ dataUrl, filename: `${base}.${ext}` });
       } catch (e) {
         resolve({ crossOriginFailed: true });
@@ -244,6 +137,8 @@ function convertImageInPage(srcUrl, mimeType, ext, quality) {
 }
 
 // ─── Injected Function 2: convert a pre-fetched data URL ──────────────────
+// The service worker fetched the bytes; this converts them inside the page.
+// Parses SVG viewBox for accurate dimensions when width/height are absent.
 
 function convertDataUrlInPage(fetchedDataUrl, mimeType, ext, quality, base) {
   return new Promise((resolve) => {
@@ -251,34 +146,36 @@ function convertDataUrlInPage(fetchedDataUrl, mimeType, ext, quality, base) {
     function svgDimensions(dataUrl) {
       try {
         let svgText;
-        if (dataUrl.startsWith("data:image/svg+xml;base64,")) {
+        if (dataUrl.startsWith("data:image/svg+xml;base64,"))
           svgText = atob(dataUrl.slice("data:image/svg+xml;base64,".length));
-        } else if (dataUrl.startsWith("data:image/svg+xml,")) {
+        else if (dataUrl.startsWith("data:image/svg+xml,"))
           svgText = decodeURIComponent(dataUrl.slice("data:image/svg+xml,".length));
-        } else {
+        else
           return null;
-        }
-        const parser = new DOMParser();
-        const doc    = parser.parseFromString(svgText, "image/svg+xml");
-        const svg    = doc.querySelector("svg");
+
+        const svg = new DOMParser()
+          .parseFromString(svgText, "image/svg+xml")
+          .querySelector("svg");
         if (!svg) return null;
+
         const aw = parseFloat(svg.getAttribute("width"));
         const ah = parseFloat(svg.getAttribute("height"));
         if (aw > 0 && ah > 0) return { w: aw, h: ah };
+
         const vb = svg.getAttribute("viewBox");
         if (vb) {
-          const parts = vb.trim().split(/[\s,]+/).map(Number);
-          if (parts.length === 4 && parts[2] > 0 && parts[3] > 0)
-            return { w: parts[2], h: parts[3] };
+          const [,, w, h] = vb.trim().split(/[\s,]+/).map(Number);
+          if (w > 0 && h > 0) return { w, h };
         }
       } catch (_) {}
       return null;
     }
 
-    const isSvg = fetchedDataUrl.startsWith("data:image/svg");
-    const dims  = isSvg ? svgDimensions(fetchedDataUrl) : null;
-    const img   = new Image();
+    const dims = fetchedDataUrl.startsWith("data:image/svg")
+      ? svgDimensions(fetchedDataUrl)
+      : null;
 
+    const img = new Image();
     img.onload = () => {
       try {
         const w = dims?.w || img.naturalWidth  || img.width  || 512;
@@ -292,13 +189,11 @@ function convertDataUrlInPage(fetchedDataUrl, mimeType, ext, quality, base) {
           ctx.fillRect(0, 0, w, h);
         }
         ctx.drawImage(img, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL(mimeType, quality);
-        resolve({ dataUrl, filename: `${base}.${ext}` });
+        resolve({ dataUrl: canvas.toDataURL(mimeType, quality), filename: `${base}.${ext}` });
       } catch (e) {
         resolve({ error: e.message });
       }
     };
-
     img.onerror = () => resolve({ error: "Could not decode fetched image data." });
     img.src = fetchedDataUrl;
   });

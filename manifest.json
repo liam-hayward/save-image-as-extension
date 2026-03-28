@@ -1,14 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Save Image As Type",
-  "version": "1.3.0",
-  "description": "Right-click any image to save it as JPG, PNG, or WebP — works on pages and standalone image tabs.",
+  "version": "1.0.3",
+  "description": "Right-click any image to save it as JPG, PNG, or WebP.",
   "permissions": [
     "contextMenus",
     "downloads",
     "activeTab",
-    "scripting",
-    "offscreen"
+    "scripting"
   ],
   "host_permissions": [
     "<all_urls>"
