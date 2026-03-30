@@ -1,13 +1,13 @@
 # Save Image As Type
 
-A minimal Chrome extension that adds a **"Save image as type"** sub-menu to the right-click context menu on any image, letting you download it as JPEG, PNG, or WebP — converted entirely in the browser with no external services.
+A minimal Chrome extension that adds a **"Save image as type"** sub-menu to the right-click context menu on any image, letting you download it as JPEG, PNG, or WebP - converted entirely in the browser with no external services.
 
 ---
 
 ## Features
 
 - Right-click any image → **Save image as type** → pick a format
-- Converts in-browser using the Canvas API — no uploads, no servers
+- Converts in-browser using the Canvas API - no uploads, no servers
 - Handles cross-origin images via a service-worker fetch fallback
 - Preserves original filename, swapping only the extension
 - White background fill for JPEG exports (no alpha channel support in JPEG)
@@ -34,7 +34,7 @@ This extension is not on the Chrome Web Store. Install it in developer mode:
 3. Enable **Developer mode** (toggle, top-right corner)
 4. Click **Load unpacked**
 5. Select the repository folder
-6. The extension is active immediately — no restart needed
+6. The extension is active immediately - no restart needed
 
 ---
 
@@ -76,8 +76,8 @@ This extension is not on the Chrome Web Store. Install it in developer mode:
 
 ## Known Limitations
 
-- **Animated GIFs / WebP**: only the first frame is saved — animation is not preserved
-- **TIFF, HEIC, RAW**: not supported — Chrome cannot decode these natively
+- **Animated GIFs / WebP**: only the first frame is saved - animation is not preserved
+- **TIFF, HEIC, RAW**: not supported - Chrome cannot decode these natively
 - **Hotlink-protected images**: some CDNs return a placeholder or 403 when fetched outside the page context
 - **Very large images**: subject to browser canvas size limits (max ~32,767 × 32,767px in Chrome)
 - **Colour profiles**: embedded ICC profiles are discarded; output is always sRGB
