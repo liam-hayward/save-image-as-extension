@@ -2,12 +2,12 @@
    Save Image As Type – injected toast styles
    ========================================================= */
 
-#__siat_toast__ {
-  /* Reset */
-  all: initial;
-}
-
 .siat-toast {
+  /* Reset page styles first. Must live in this rule, not a separate
+     #__siat_toast__ rule: an ID selector outranks this class selector,
+     so a reset there would wipe out every declaration below. */
+  all: initial;
+
   /* Layout */
   position: fixed;
   bottom: 28px;

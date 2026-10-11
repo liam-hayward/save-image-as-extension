@@ -8,7 +8,10 @@ const FORMATS = [
 
 // ─── Context Menu Setup ────────────────────────────────────────────────────
 
-chrome.runtime.onInstalled.addListener(() => {
+// Menu items persist across extension reloads/updates, so clear them first —
+// otherwise create() fails with "Cannot create item with duplicate id".
+chrome.runtime.onInstalled.addListener(async () => {
+  await chrome.contextMenus.removeAll();
   chrome.contextMenus.create({
     id: "saveImageAsType",
     title: "Save image as type",
@@ -26,9 +29,23 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
+// Turn an image URL into a safe filename without extension.
+// e.g. ".../my%20photo.jpg?w=800" → "my photo"
 function baseName(url) {
-  let name = url.split("/").pop().split("?")[0] || "image";
-  name = name.replace(/\.[a-zA-Z0-9]+$/, "").trim();
+  // data: URLs have no real name — the "path" is the image bytes themselves
+  if (url.startsWith("data:")) return "image";
+
+  let name = url.split(/[?#]/)[0].split("/").pop();
+  try {
+    name = decodeURIComponent(name);            // "%20" → " "
+  } catch (_) {
+    // Malformed %-sequence — keep the raw name
+  }
+  name = name
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")     // characters Windows forbids in filenames
+    .replace(/\.[a-zA-Z0-9]+$/, "")             // drop the old extension
+    .replace(/^[.\s]+|[.\s]+$/g, "")            // leading/trailing dots and spaces
+    .slice(0, 100);
   return name || "image";
 }
 
@@ -49,11 +66,18 @@ async function fetchImageAsDataUrl(srcUrl) {
   return `data:${blob.type};base64,${btoa(binary)}`;
 }
 
+// Injects the toast styles and function on demand, so it works in tabs that
+// were open before the extension was installed or reloaded.
 async function sendToast(tabId, message, variant = "success") {
   try {
-    await chrome.tabs.sendMessage(tabId, { type: "SIAT_TOAST", message, variant });
+    await chrome.scripting.insertCSS({ target: { tabId }, files: ["style.css"] });
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: showToastInPage,
+      args: [message, variant],
+    });
   } catch (_) {
-    // Tab may not have the content script (e.g. chrome:// pages) — fail silently
+    // Page doesn't allow injection (e.g. chrome:// pages) — fail silently
   }
 }
 
@@ -74,7 +98,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     let results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: convertImageInPage,
-      args: [srcUrl, format.mimeType, format.ext, format.quality],
+      args: [srcUrl, format.mimeType, format.quality],
     });
 
     let result = results?.[0]?.result;
@@ -93,25 +117,26 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: convertDataUrlInPage,
-        args: [fetchedDataUrl, format.mimeType, format.ext, format.quality, baseName(srcUrl)],
+        args: [fetchedDataUrl, format.mimeType, format.quality],
       });
       result = results?.[0]?.result;
     }
 
-    if (result?.error) {
-      console.error("Save Image As Type:", result.error);
+    // Images over Chrome's canvas size limit don't throw — toDataURL just
+    // returns the empty "data:," instead, which would download a 0-byte file.
+    if (result?.error || !result?.dataUrl || result.dataUrl === "data:,") {
+      console.error("Save Image As Type:", result?.error ?? "Canvas produced no data (image may be too large).");
       await sendToast(tab.id, "Could not convert image.", "error");
       return;
     }
 
-    if (result?.dataUrl) {
-      await chrome.downloads.download({
-        url:      result.dataUrl,
-        filename: result.filename,
-        saveAs:   false,
-      });
-      await sendToast(tab.id, `Saved as ${format.ext.toUpperCase()}: ${result.filename}`);
-    }
+    const filename = `${baseName(srcUrl)}.${format.ext}`;
+    await chrome.downloads.download({
+      url:      result.dataUrl,
+      filename,
+      saveAs:   false,
+    });
+    await sendToast(tab.id, `Saved as ${format.ext.toUpperCase()}: ${filename}`);
 
   } catch (err) {
     console.error("Save Image As Type:", err);
@@ -122,7 +147,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 // ─── Injected Function 1: page-side conversion ────────────────────────────
 // Returns { crossOriginFailed: true } if the canvas is tainted.
 
-function convertImageInPage(srcUrl, mimeType, ext, quality) {
+function convertImageInPage(srcUrl, mimeType, quality) {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -141,11 +166,7 @@ function convertImageInPage(srcUrl, mimeType, ext, quality) {
           ctx.fillRect(0, 0, w, h);
         }
         ctx.drawImage(img, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL(mimeType, quality);
-
-        let base = srcUrl.split("/").pop().split("?")[0] || "image";
-        base = base.replace(/\.[a-zA-Z0-9]+$/, "") || "image";
-        resolve({ dataUrl, filename: `${base}.${ext}` });
+        resolve({ dataUrl: canvas.toDataURL(mimeType, quality) });
       } catch (e) {
         resolve({ crossOriginFailed: true });
       }
@@ -160,7 +181,7 @@ function convertImageInPage(srcUrl, mimeType, ext, quality) {
 // The service worker fetched the bytes; this converts them inside the page.
 // Parses SVG viewBox for accurate dimensions when width/height are absent.
 
-function convertDataUrlInPage(fetchedDataUrl, mimeType, ext, quality, base) {
+function convertDataUrlInPage(fetchedDataUrl, mimeType, quality) {
   return new Promise((resolve) => {
 
     function svgDimensions(dataUrl) {
@@ -209,7 +230,7 @@ function convertDataUrlInPage(fetchedDataUrl, mimeType, ext, quality, base) {
           ctx.fillRect(0, 0, w, h);
         }
         ctx.drawImage(img, 0, 0, w, h);
-        resolve({ dataUrl: canvas.toDataURL(mimeType, quality), filename: `${base}.${ext}` });
+        resolve({ dataUrl: canvas.toDataURL(mimeType, quality) });
       } catch (e) {
         resolve({ error: e.message });
       }
@@ -217,4 +238,39 @@ function convertDataUrlInPage(fetchedDataUrl, mimeType, ext, quality, base) {
     img.onerror = () => resolve({ error: "Could not decode fetched image data." });
     img.src = fetchedDataUrl;
   });
+}
+
+// ─── Injected Function 3: toast notification ──────────────────────────────
+// Styles come from style.css, inserted by sendToast() just before this runs.
+
+function showToastInPage(message, variant) {
+  document.getElementById("__siat_toast__")?.remove();
+
+  const toast = document.createElement("div");
+  toast.id = "__siat_toast__";
+  toast.className = `siat-toast siat-toast--${variant}`;
+
+  const icon = document.createElement("span");
+  icon.className = "siat-toast__icon";
+  icon.textContent = variant === "success" ? "✓" : "✕";
+
+  // textContent, not innerHTML: the message contains a filename taken from
+  // the image URL, which must never be interpreted as HTML.
+  const msg = document.createElement("span");
+  msg.className = "siat-toast__msg";
+  msg.textContent = message;
+
+  toast.append(icon, msg);
+  document.body.appendChild(toast);
+
+  // Trigger enter animation
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => toast.classList.add("siat-toast--visible"));
+  });
+
+  // Auto-dismiss
+  setTimeout(() => {
+    toast.classList.remove("siat-toast--visible");
+    toast.addEventListener("transitionend", () => toast.remove(), { once: true });
+  }, 3000);
 }
