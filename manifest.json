@@ -6,7 +6,6 @@
   "permissions": [
     "contextMenus",
     "downloads",
-    "activeTab",
     "scripting"
   ],
   "host_permissions": [

@@ -93,10 +93,14 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const srcUrl = info.srcUrl;
   if (!srcUrl) return;
 
+  // Convert inside the frame the image is in. For an image inside an iframe,
+  // the top page may be a different origin and unable to read it.
+  const target = { tabId: tab.id, frameIds: [info.frameId ?? 0] };
+
   try {
     // Step 1: try converting inside the page (fast, works for same-origin images)
     let results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
+      target,
       func: convertImageInPage,
       args: [srcUrl, format.mimeType, format.quality],
     });
@@ -115,7 +119,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       }
 
       results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
+        target,
         func: convertDataUrlInPage,
         args: [fetchedDataUrl, format.mimeType, format.quality],
       });
@@ -272,5 +276,8 @@ function showToastInPage(message, variant) {
   setTimeout(() => {
     toast.classList.remove("siat-toast--visible");
     toast.addEventListener("transitionend", () => toast.remove(), { once: true });
+    // Backup in case no transition runs (e.g. tab hidden mid-fade) — the
+    // fade is 200ms, so by 500ms the toast should be gone either way.
+    setTimeout(() => toast.remove(), 500);
   }, 3000);
 }

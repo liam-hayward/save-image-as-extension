@@ -53,6 +53,7 @@ This extension is not on the Chrome Web Store. Install it in developer mode:
 ├── manifest.json    Extension manifest (Manifest V3)
 ├── background.js    Service worker — context menus, conversion, download, toast
 ├── style.css        Toast styles (injected only when a toast is shown)
+├── LICENSE          MIT licence
 └── icons/
     ├── icon16.png
     ├── icon48.png
@@ -68,8 +69,7 @@ This extension is not on the Chrome Web Store. Install it in developer mode:
 | `contextMenus` | Add the right-click sub-menu |
 | `downloads` | Trigger the file download |
 | `scripting` | Inject the canvas conversion and toast notification into the page |
-| `activeTab` | Target the current tab for script injection |
-| `host_permissions: <all_urls>` | Fetch cross-origin images from the service worker |
+| `host_permissions: <all_urls>` | Inject scripts into any page, and fetch cross-origin images from the service worker |
 
 ---
 
