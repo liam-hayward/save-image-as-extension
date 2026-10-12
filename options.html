@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Save Image As Type – Settings</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --text: #1f1f1f;
+      --muted: #5f6368;
+      --accent: #1a73e8;
+      --border: #dadce0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --text: #e8eaed;
+        --muted: #9aa0a6;
+        --accent: #8ab4f8;
+        --border: #3c4043;
+      }
+    }
+    body {
+      margin: 0;
+      padding: 16px 20px;
+      min-width: 360px;
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      color: var(--text);
+    }
+    h2 {
+      margin: 0 0 4px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    section + section { margin-top: 20px; }
+    .row {
+      display: grid;
+      grid-template-columns: 110px 1fr 44px;
+      align-items: center;
+      gap: 12px;
+      padding: 6px 0;
+    }
+    .row output { text-align: right; font-variant-numeric: tabular-nums; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .check { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+    .check input { accent-color: var(--accent); margin: 0; }
+    .hint { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); }
+    .spacer { height: 10px; }
+    footer {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 20px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    button {
+      font: inherit;
+      padding: 5px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+    }
+    #status { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <section>
+    <h2>Quality</h2>
+    <label class="row">
+      <span>JPEG</span>
+      <input type="range" id="jpgQuality" min="1" max="100">
+      <output id="jpgQualityValue"></output>
+    </label>
+    <label class="row">
+      <span>WebP</span>
+      <input type="range" id="webpQuality" min="1" max="100">
+      <output id="webpQualityValue"></output>
+    </label>
+    <p class="hint">Higher means sharper images and bigger files. PNG is always full quality.</p>
+  </section>
+
+  <section>
+    <h2>Saving</h2>
+    <label class="check">
+      <input type="radio" name="saveMode" value="direct">
+      <span>Save straight to Downloads</span>
+    </label>
+    <label class="check">
+      <input type="radio" name="saveMode" value="rename">
+      <span>Ask for a filename, then save to Downloads</span>
+    </label>
+    <label class="check">
+      <input type="radio" name="saveMode" value="dialog">
+      <span>Ask for filename and folder (Chrome's Save dialog)</span>
+    </label>
+    <div class="spacer"></div>
+    <label class="check">
+      <input type="checkbox" id="appendDimensions">
+      <span>Add dimensions to filename</span>
+    </label>
+    <p class="hint">photo.jpg → photo_1920x1080.jpg</p>
+    <label class="check">
+      <input type="checkbox" id="appendSize">
+      <span>Add file size to filename</span>
+    </label>
+    <p class="hint">photo.jpg → photo_245KB.jpg. Both on: photo_1920x1080_245KB.jpg</p>
+    <label class="check">
+      <input type="checkbox" id="roundSizes">
+      <span>Round file sizes</span>
+    </label>
+    <p class="hint">30 KB instead of 29.5 KB. Applies to the Compare panel and filenames.</p>
+  </section>
+
+  <section>
+    <h2>Compare sizes</h2>
+    <label class="check">
+      <input type="checkbox" id="showCompare">
+      <span>Show “Compare sizes…” in the right-click menu</span>
+    </label>
+    <p class="hint">Converts an image to every format and shows the exact file sizes before you download.</p>
+    <label class="check">
+      <input type="checkbox" id="keepPanelOpen">
+      <span>Keep the panel open after downloading</span>
+    </label>
+    <p class="hint">Off: the panel closes once a file is saved. Clicking outside it or pressing Esc always closes it.</p>
+  </section>
+
+  <footer>
+    <button id="reset" type="button">Reset to defaults</button>
+    <span id="status" role="status"></span>
+  </footer>
+
+  <script src="settings.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

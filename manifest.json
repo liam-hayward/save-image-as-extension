@@ -1,12 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Save Image As Type",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "Right-click any image to save it as JPG, PNG, or WebP.",
   "permissions": [
     "contextMenus",
     "downloads",
-    "scripting"
+    "notifications",
+    "scripting",
+    "storage"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -14,12 +16,13 @@
   "background": {
     "service_worker": "background.js"
   },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  },
-  "action": {
-    "default_title": "Save Image As Type"
   }
 }
